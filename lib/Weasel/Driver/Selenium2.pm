@@ -5,7 +5,7 @@ Weasel::Driver::Selenium2 - Weasel driver wrapping Selenium::Remote::Driver
 
 =head1 VERSION
 
-0.06
+0.07
 
 =head1 SYNOPSIS
 
@@ -47,13 +47,14 @@ use warnings;
 use MIME::Base64;
 use Selenium::Remote::Driver;
 use Time::HiRes;
-use Carp qw(croak);
 use Weasel::DriverRole;
+use Weasel::Driver::Waiter;
+use Carp;
 
 use Moose;
 with 'Weasel::DriverRole';
 
-our $VERSION = '0.06';
+our $VERSION = '0.07';
 
 =head1 ATTRIBUTES
 
@@ -154,7 +155,6 @@ sub start {
 }
 
 =item error_handler
-
 The error handler currently receives two arguments:
     - $driver object itself
     - the exception message and stack trace in one multiline string.
@@ -213,7 +213,7 @@ sub get {
     $self->_driver->get($url);
 }
 
-=item wait_for
+=item wait_for($callback, $retry_timeout, $poll_delay, %args)
 
 =cut
 
@@ -229,12 +229,32 @@ sub wait_for {
 
         sleep $args{poll_delay};
     } until (time() > $end);
+    croak "Browser timed out after " . $args{retry_timeout} . " seconds while waiting for " . $self->_driver->get_current_url if time() > $end;
 
     return;
 }
 
 
+=item wait_for_stale($link)
 
+=cut
+
+sub wait_for_stale {
+  my ($self,$link,%args) = @_;
+
+  $self->wait_for(
+      sub {
+          try {
+              # poll the link with an arbitrary call
+              $link->tag_name;
+              return 0;
+          } catch {
+            die $_ if ref($_) ne "HASH";
+            warn $_->{cmd_return}->{error}->{code} if ref($_) eq "HASH" && $_->{cmd_return}->{error}->{code} ne "STALE_ELEMENT_REFERENCE";
+            return $_->{cmd_return}->{error}->{code} eq "STALE_ELEMENT_REFERENCE";
+          }
+        },%args) if $link;
+};
 =item clear
 
 =cut
@@ -289,16 +309,6 @@ sub get_attribute {
     return $self->_resolve_id($id)->get_attribute($att);
 }
 
-=item get_page_source($fh)
-
-=cut
-
-sub get_page_source {
-    my ($self) = @_;
-
-    return $self->_driver->get_page_source();
-}
-
 =item get_text($id)
 
 =cut
@@ -351,6 +361,16 @@ sub set_selected {
     # The other solution is to use is_selected to verify the current state
     # and toggling by click()ing
     $self->_resolve_id($id)->set_selected($value);
+}
+
+=item get_page_source($fh)
+
+=cut
+
+sub get_page_source {
+    my ($self,$fh) = @_;
+
+    print $fh $self->_driver->get_page_source();
 }
 
 =item screenshot($fh)
@@ -467,7 +487,6 @@ sub dismiss_alert {
     my ($self) = @_;
     $self->_driver->dismiss_alert;
 }
-
 =back
 
 =cut
@@ -527,3 +546,4 @@ Licensed under the same terms as Perl.
 =cut
 
 1;
+
