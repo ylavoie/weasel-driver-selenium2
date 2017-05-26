@@ -1,3 +1,6 @@
+** 0.10 / 2019-07-02
+   - Add capacity to handle errors
+
 ** 0.09 / 2019-06-25
    - Use high-resolution timings from Time::HiRes by actually
      importing time() and sleep()

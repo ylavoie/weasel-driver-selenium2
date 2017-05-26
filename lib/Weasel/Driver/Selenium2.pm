@@ -5,7 +5,7 @@ Weasel::Driver::Selenium2 - Weasel driver wrapping Selenium::Remote::Driver
 
 =head1 VERSION
 
-0.09
+0.10
 
 =head1 SYNOPSIS
 
@@ -64,7 +64,7 @@ use English qw(-no_match_vars);
 use Moose;
 with 'Weasel::DriverRole';
 
-our $VERSION = '0.09';
+our $VERSION = '0.10';
 
 
 =head1 ATTRIBUTES
@@ -136,7 +136,7 @@ see L<Weasel::DriverRole>.
 =cut
 
 sub implements {
-    return '0.02';
+    return '0.03';
 }
 
 =item start
@@ -160,14 +160,31 @@ sub start {
               $self->{caps}{$capability_name} = $ENV{$1};
             }
         }
-    } for (qw/browser_name remote_server_addr version platform/);
+    } for (qw/browser_name remote_server_addr version platform error_handler/);
 
-    my $driver = Selenium::Remote::Driver->new(%{$self->caps});
+    my $driver = Selenium::Remote::Driver->new(%{$self->caps},
+                        error_handler => sub { $self->error_handler(@_); });
 
     $self->_driver($driver);
     $self->set_wait_timeout($self->wait_timeout);
     $self->set_window_size($self->window_size);
     return $self->started(1);
+}
+
+=item error_handler
+
+The error handler currently receives two arguments:
+    - $driver object itself
+    - the exception message and stack trace in one multiline string.
+
+=cut
+
+sub error_handler {
+    my ($self,$driver,$error) = @_;
+    return $self->user_error_handler->($self,$error)
+        if $self->has_user_error_handler;
+    croak $error; # Current driver behaviour is to croak. We emulate
+    return $error;
 }
 
 =item stop
