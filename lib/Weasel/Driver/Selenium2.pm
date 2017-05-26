@@ -5,7 +5,7 @@ Weasel::Driver::Selenium2 - Weasel driver wrapping Selenium::Remote::Driver
 
 =head1 VERSION
 
-0.10
+0.11
 
 =head1 SYNOPSIS
 
@@ -39,19 +39,16 @@ Selenium::Remote::Driver.
 
 =cut
 
-
 =head1 DEPENDENCIES
 
 This module wraps L<Selenium::Remote::Driver>, version 2.
 
 =cut
 
-
 package Weasel::Driver::Selenium2;
 
 use strict;
 use warnings;
-
 use namespace::autoclean;
 
 use MIME::Base64;
@@ -64,7 +61,7 @@ use English qw(-no_match_vars);
 use Moose;
 with 'Weasel::DriverRole';
 
-our $VERSION = '0.10';
+our $VERSION = '0.11';
 
 
 =head1 ATTRIBUTES
@@ -152,22 +149,34 @@ sub start {
     do {
         if ( defined  $self->{caps}{$_}) {
             my $capability_name = $_;
-            if ( $self->{caps}{$capability_name} =~
-                  /\$\{             # a dollar sign and opening brace
-                   ([^\}]+)         # any character not a closing brace
-                   \}/x             # a closing brace
-                ) {
-              $self->{caps}{$capability_name} = $ENV{$1};
-            }
+            my $capability = $self->{caps}{$capability_name} =~ /\$\{([^\}]+)\}/;
+            $self->{caps}{$capability_name} = $ENV{$1} if $capability;
         }
-    } for (qw/browser_name remote_server_addr version platform/);
+    } for (qw/browser_name remote_server_addr version platform error_handler/);
 
-    my $driver = Selenium::Remote::Driver->new(%{$self->caps});
+    my $driver = Selenium::Remote::Driver->new(%{$self->caps},
+                        error_handler => sub { $self->error_handler(@_); });
 
     $self->_driver($driver);
     $self->set_wait_timeout($self->wait_timeout);
     $self->set_window_size($self->window_size);
     return $self->started(1);
+}
+
+=item error_handler
+
+The error handler currently receives two arguments:
+    - $driver object itself
+    - the exception message and stack trace in one multiline string.
+
+=cut
+
+sub error_handler {
+    my ($self,$driver,$error) = @_;
+    return $self->user_error_handler->($self,$error)
+        if $self->has_user_error_handler;
+    croak $error; # Current driver behaviour is to croak. We emulate
+    return $error;
 }
 
 =item stop
@@ -229,7 +238,7 @@ sub wait_for {
         return $rv if $rv;
 
         if (time() <= $end) {
-            sleep $args{poll_delay};
+        sleep $args{poll_delay};
         }
         elsif ($args{on_timeout}) {
             $args{on_timeout}->();
@@ -473,7 +482,6 @@ __PACKAGE__->meta()->make_immutable();
 =head1 AUTHOR
 
 Erik Huelsmann
-
 =head1 CONTRIBUTORS
 
 =over
