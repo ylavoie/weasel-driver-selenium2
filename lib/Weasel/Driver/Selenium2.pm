@@ -5,7 +5,7 @@ Weasel::Driver::Selenium2 - Weasel driver wrapping Selenium::Remote::Driver
 
 =head1 VERSION
 
-0.06
+0.07
 
 =head1 SYNOPSIS
 
@@ -52,7 +52,7 @@ use Weasel::DriverRole;
 use Moose;
 with 'Weasel::DriverRole';
 
-our $VERSION = '0.06';
+our $VERSION = '0.07';
 
 
 =head1 ATTRIBUTES
@@ -145,8 +145,32 @@ sub start {
         }
     } for (qw/browser_name remote_server_addr version platform/);
 
-    my $driver = Selenium::Remote::Driver->new(%{$self->caps});
-
+    #TODO: Should we? http://tarunlalwani.com/post/selenium-disable-image-loading-different-browsers/
+    if ( $self->{caps}{browser_name} eq 'chrome' ) {
+        $self->{caps}{'extra_capabilities'} = {
+           'chromeOptions' => {
+               'args' => [
+                   'no-sandbox',
+                   'headless',
+               ]
+           }
+        };
+        $Selenium::Remote::Driver::FORCE_WD2 = 1;
+    } elsif ( $self->{caps}{browser_name} eq 'firefox' ) {
+        $self->{caps}{'extra_capabilities'} = {
+            'moz:firefoxOptions' => {
+              args    => [ '--headless' ],
+            },
+        };
+        $Selenium::Remote::Driver::FORCE_WD3 = 1;
+    }
+    $self->{caps}{'wd_context_prefix'} = $Selenium::Remote::Driver::FORCE_WD2 ? '/wd/hub' : '';
+#See http://search.cpan.org/~teodesian/Selenium-Remote-Driver-1.23/lib/Selenium/Remote/Driver.pm
+#Connect to an already running selenium server
+    my $driver = Selenium::Remote::Driver->new(
+        %{$self->{caps}},
+        accept_ssl_certs => 1,
+    );
     $self->_driver($driver);
     $self->set_wait_timeout($self->wait_timeout);
     $self->set_window_size($self->window_size);

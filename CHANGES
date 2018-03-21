@@ -1,3 +1,6 @@
+** 0.07 / 2018-03-21
+   - Move to headless browsers: PhantomJS, Chrome and Firefox
+
 ** 0.06 / 2018-03-21
    - Add get_property for W3C / Selenium3 compatibility
 
