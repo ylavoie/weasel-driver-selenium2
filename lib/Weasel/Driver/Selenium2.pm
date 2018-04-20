@@ -5,7 +5,7 @@ Weasel::Driver::Selenium2 - Weasel driver wrapping Selenium::Remote::Driver
 
 =head1 VERSION
 
-0.05
+0.08
 
 =head1 SYNOPSIS
 
@@ -52,7 +52,7 @@ use Weasel::DriverRole;
 use Moose;
 with 'Weasel::DriverRole';
 
-our $VERSION = '0.05';
+our $VERSION = '0.08';
 
 
 =head1 ATTRIBUTES
@@ -299,6 +299,16 @@ sub is_displayed {
     my ($self, $id) = @_;
 
     return $self->_resolve_id($id)->is_displayed;
+}
+
+=item is_enabled($id)
+
+=cut
+
+sub is_enabled {
+    my ($self, $id) = @_;
+
+    return $self->_resolve_id($id)->is_enabled;
 }
 
 =item set_attribute($id, $att_name, $value)
