@@ -327,7 +327,7 @@ sub execute_script {
 sub get_attribute {
     my ($self, $id, $att) = @_;
 
-    return $self->_resolve_id($id)->get_attribute($att);
+    return $self->_resolve_id($id)->get_attribute($att,1);
 }
 
 =item get_page_source($fh)
