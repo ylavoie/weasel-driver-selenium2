@@ -181,26 +181,43 @@ The error handler currently receives three arguments:
 
 =cut
 
+use Data::Printer;
+use DateTime::HiRes;
 sub error_handler {
-    my ($self,$error,@args) = @_;
+    my ($self,$orig,$error,$res, $params) = @_;
     my $msg = (split '\n', $error)[0]; # Remove unneeded info
+    my $t = DateTime::HiRes->now;
+    my $dt = $t->hms . ':' . $t->millisecond;
+    no warnings 'uninitialized';
+
     if ( $msg =~ /A modal dialog was open/ ) {
         my $pwd = $self->get_alert_text();
         if ( $pwd && $pwd =~ "Warning:  Your password will expire in" ) {
             $self->accept_alert;
             return undef;
         }
-    } elsif ( $msg =~ /stale element reference|An element command failed because the referenced element is no longer attached to the DOM/ ) {
+    } elsif ( $msg =~ /stale element reference.+(<([^>]+)>)|An element command failed because the referenced element is no longer attached to the DOM/ ) {
+        warn $dt . " stale element <$2> referenced by " . $res->{command}
+          if $res->{command} ne 'getElementTagName';
         return undef;
-    } elsif ( $msg =~ /Couldn't retrieve command settings properly.*getElementTagName/ ) { #'
+    } elsif ( $msg =~ /Couldn't retrieve command settings properly/ ) { #'
+        warn $dt . " Couldn't retrieve command " . $res->{command} . " settings properly"
+          if $res->{command} ne 'getElementTagName';
         return undef;
-#    } elsif ( $msg =~ /element not interactable/ ) {
-#        warn np($msg) . np(@args);
-#        return undef;
+    } elsif ( $msg =~ /element not interactable.+<([^>]+)>/ ) {
+      warn $dt . " element <$1> not interactable with command " . $res->{command};
+      my $filename = "screens/_error_handler_" . $dt;
+      $self->_driver->capture_screenshot($filename);
+      $Carp::Verbose=1;
+      return undef;
+    } elsif ($msg =~ "wait_for deadline expired") {
+      warn $dt . " element <$1> deadlined with command " . $res->{command};
+      my $filename = "screens/_error_handler_" . $dt;
+      $self->_driver->capture_screenshot($filename);
+      $Carp::Verbose=1;
+    } elsif ($res->{command} ne 'getElementTagName') {
+      warn $dt . $res->{command};
     }
-    $Carp::Verbose=1 if $msg =~ /element not interactable/;
-    my $filename = "screens/error_handler_" . time();
-    $self->_driver->capture_screenshot($filename);
     croak $msg; # Current driver behaviour is to croak. We emulate
     $Carp::Verbose=0;
     return undef;
