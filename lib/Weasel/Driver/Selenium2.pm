@@ -56,6 +56,7 @@ use namespace::autoclean;
 
 use MIME::Base64;
 use Selenium::Remote::Driver;
+use Selenium::Remote::ErrorHandler;
 use Time::HiRes qw/ time sleep /;
 use Weasel::DriverRole;
 use Carp;
@@ -173,18 +174,36 @@ sub start {
 
 =item error_handler
 
-The error handler currently receives two arguments:
+The error handler currently receives three arguments:
     - $driver object itself
     - the exception message and stack trace in one multiline string.
+    - the args array to help produce better diagnostics/handling
 
 =cut
 
 sub error_handler {
-    my ($self,$driver,$error) = @_;
-    return $self->user_error_handler->($self,$error)
-        if $self->has_user_error_handler;
-    croak $error; # Current driver behaviour is to croak. We emulate
-    return $error;
+    my ($self,$error,@args) = @_;
+    my $msg = (split '\n', $error)[0]; # Remove unneeded info
+    if ( $msg =~ /A modal dialog was open/ ) {
+        my $pwd = $self->get_alert_text();
+        if ( $pwd && $pwd =~ "Warning:  Your password will expire in" ) {
+            $self->accept_alert;
+            return undef;
+        }
+    } elsif ( $msg =~ /stale element reference|An element command failed because the referenced element is no longer attached to the DOM/ ) {
+        return undef;
+    } elsif ( $msg =~ /Couldn't retrieve command settings properly.*getElementTagName/ ) { #'
+        return undef;
+#    } elsif ( $msg =~ /element not interactable/ ) {
+#        warn np($msg) . np(@args);
+#        return undef;
+    }
+    $Carp::Verbose=1 if $msg =~ /element not interactable/;
+    my $filename = "screens/error_handler_" . time();
+    $self->_driver->capture_screenshot($filename);
+    croak $msg; # Current driver behaviour is to croak. We emulate
+    $Carp::Verbose=0;
+    return undef;
 }
 
 =item stop
@@ -523,4 +542,3 @@ Licensed under the same terms as Perl.
 =cut
 
 1;
-
