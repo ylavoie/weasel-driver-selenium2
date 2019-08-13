@@ -53,9 +53,12 @@ use namespace::autoclean;
 
 use MIME::Base64;
 use Selenium::Remote::Driver;
+use Selenium::Remote::ErrorHandler;
 use Time::HiRes qw/ time sleep /;
 use Weasel::DriverRole;
 use Carp::Clan qw(^Weasel::);
+use Try::Tiny qw( try catch );
+use JSON::MaybeXS;
 use English qw(-no_match_vars);
 
 use Moose;
@@ -149,13 +152,39 @@ sub start {
     do {
         if ( defined  $self->{caps}{$_}) {
             my $capability_name = $_;
-            my $capability = $self->{caps}{$capability_name} =~ /\$\{([^\}]+)\}/;
-            $self->{caps}{$capability_name} = $ENV{$1} if $capability;
+            if ( $self->{caps}{$capability_name} =~/\$\{([^\}]+)\}/ ) {
+                $self->{caps}{$capability_name} = $ENV{$1} if $ENV{$1};
+            }
         }
     } for (qw/browser_name remote_server_addr version platform error_handler/);
 
-    my $driver = Selenium::Remote::Driver->new(%{$self->caps},
-                        error_handler => sub { $self->error_handler(@_); });
+    #TODO: Should we? http://tarunlalwani.com/post/selenium-disable-image-loading-different-browsers/
+    if ( $self->{caps}{browser_name} eq 'chrome' ) {
+        $self->{caps}{'extra_capabilities'} = {
+           'chromeOptions' => {
+               'args' => [
+                   'no-sandbox',
+                   'headless',
+               ]
+           }
+        };
+        $Selenium::Remote::Driver::FORCE_WD2 = 1;
+    } elsif ( $self->{caps}{browser_name} eq 'firefox' ) {
+        $self->{caps}{'extra_capabilities'} = {
+            'moz:firefoxOptions'     => {
+              args    => [ '--headless' ],
+            },
+        };
+        $Selenium::Remote::Driver::FORCE_WD3 = 1;
+    }
+    $self->{caps}{'wd_context_prefix'} = $Selenium::Remote::Driver::FORCE_WD2 ? '/wd/hub' : '';
+#See http://search.cpan.org/~teodesian/Selenium-Remote-Driver-1.23/lib/Selenium/Remote/Driver.pm
+#Connect to an already running selenium server
+    my $driver = Selenium::Remote::Driver->new(
+        %{$self->{caps}},
+        accept_ssl_certs => 1,
+        error_handler => \&error_handler
+    );
 
     $self->_driver($driver);
     $self->set_wait_timeout($self->wait_timeout);
@@ -165,18 +194,34 @@ sub start {
 
 =item error_handler
 
-The error handler currently receives two arguments:
+The error handler currently receives three arguments:
     - $driver object itself
     - the exception message and stack trace in one multiline string.
+    - the args array to help produce better diagnostics/handling
 
 =cut
 
 sub error_handler {
-    my ($self,$driver,$error) = @_;
-    return $self->user_error_handler->($self,$error)
-        if $self->has_user_error_handler;
-    croak $error; # Current driver behaviour is to croak. We emulate
-    return $error;
+    my ($self,$error,@args) = @_;
+    my $msg = (split '\n', $error)[0]; # Remove unneeded info
+    if ( $msg =~ /A modal dialog was open/ ) {
+        my $pwd = $self->get_alert_text();
+        if ( $pwd && $pwd =~ "Warning:  Your password will expire in" ) {
+            $self->accept_alert;
+            return undef;
+        }
+    } elsif ( $msg =~ /stale element reference|An element command failed because the referenced element is no longer attached to the DOM/ ) {
+        return undef;
+    } elsif ( $msg =~ /Couldn't retrieve command settings properly.*getElementTagName/ ) { #'
+        return undef;
+#    } elsif ( $msg =~ /element not interactable/ ) {
+#        warn np($msg) . np(@args);
+#        return undef;
+    }
+    $Carp::Verbose=1 if $msg =~ /element not interactable/;
+    croak $msg; # Current driver behaviour is to croak. We emulate
+    $Carp::Verbose=0;
+    return undef;
 }
 
 =item stop
@@ -223,7 +268,7 @@ sub get {
     return $self->_driver->get($url);
 }
 
-=item wait_for
+=item wait_for($callback, $retry_timeout, $poll_delay, %args)
 
 =cut
 
@@ -306,7 +351,21 @@ sub execute_script {
 sub get_attribute {
     my ($self, $id, $att) = @_;
 
-    return $self->_resolve_id($id)->get_attribute($att,1);
+    return $self->_resolve_id($id)->get_attribute($att, 1);
+}
+
+=item get_property($id, $prop_name)
+
+With Selenium 2, the method WebElement.GetAttribute(...) returned the HTMLElement
+property when present and the attribute otherwise.
+The methods are separated in Selenium 3
+
+=cut
+
+sub get_property {
+    my ($self, $id, $property) = @_;
+
+    return $self->_resolve_id($id)->get_property($property);
 }
 
 =item get_page_source($fh)
@@ -388,6 +447,8 @@ sub screenshot {
 }
 
 =item send_keys($element_id, @keys)
+
+TODO: Find the current element is auto-refresh on each key, like parts, before sending a key
 
 =cut
 
