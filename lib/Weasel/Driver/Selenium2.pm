@@ -5,7 +5,7 @@ Weasel::Driver::Selenium2 - Weasel driver wrapping Selenium::Remote::Driver
 
 =head1 VERSION
 
-0.11
+0.12
 
 =head1 SYNOPSIS
 
@@ -64,7 +64,7 @@ use English qw(-no_match_vars);
 use Moose;
 with 'Weasel::DriverRole';
 
-our $VERSION = '0.11';
+our $VERSION = '0.12';
 
 
 =head1 ATTRIBUTES
@@ -162,7 +162,32 @@ sub start {
         }
     } for (qw/browser_name remote_server_addr version platform/);
 
-    my $driver = Selenium::Remote::Driver->new(%{$self->caps});
+    $self->{caps}{'browserVersion'} = 'ANY';
+    #$Selenium::Remote::Driver::FORCE_WD3 = 0;
+    $Selenium::Remote::Driver::FORCE_WD2 = 1;
+    #$self->{caps}{'wd_context_prefix'} = '/wd/hub';
+
+    if ( $self->{caps}{browser_name} eq 'chrome' ) {
+        $self->{caps}{'extra_capabilities'} = {
+           'goog:chromeOptions' => {
+               'args' => [
+                   'no-sandbox',
+                   'headless',
+               ]
+            }
+        };
+    } elsif ( $self->{caps}{browser_name} eq 'firefox' ) {
+        $self->{caps}{'extra_capabilities'} = {
+            'moz:firefoxOptions'     => {
+              args    => [ '-headless' ],
+            }
+        };
+    }
+
+#See http://search.cpan.org/~teodesian/Selenium-Remote-Driver-1.23/lib/Selenium/Remote/Driver.pm
+#Connect to an already running selenium server
+
+    my $driver = Selenium::Remote::Driver->new(%{$self->{caps}});
 
     $self->_driver($driver);
     $self->set_wait_timeout($self->wait_timeout);

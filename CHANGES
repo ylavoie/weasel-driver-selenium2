@@ -1,3 +1,6 @@
+** 0.12 / 2020-10-24
+   - Add initialization for Chrome/ChromeDriver & Firefox/GeckoDriver
+
 ** 0.11 / 2020-06-17
    - Fix a bug with scrolling an element into the viewport on Chrome & Opera
 
